@@ -3,17 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>太空射击 2.0 豪华版</title>
+    <title>太空射击 2.0 终极流畅版</title>
     <style>
         body { margin: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; color: white; font-family: 'Arial', sans-serif; }
-        /* 游戏画布：自带星空背景 */
-        canvas { background: url('https://img.zcool.cn/community/01569d5812ba66a84a0d304f58f50c.jpg@1280w_1l_2o_100sh.jpg'); background-size: cover; border: 2px solid #555; box-shadow: 0 0 20px rgba(0,255,255,0.2); }
-        /* UI层：分数和血条 */
+        canvas { background: url('https://img.zcool.cn/community/01569d5812ba66a84a0d304f58f50c.jpg@1280w_1l_2o_100sh.jpg'); background-size: cover; border: 2px solid #555; box-shadow: 0 0 20px rgba(0,255,255,0.4); }
         .ui-layer { position: absolute; top: 10px; width: 300px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
         .health-container { width: 100px; height: 12px; border: 1.5px solid #fff; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; }
         #health-bar { width: 100%; height: 100%; background: linear-gradient(to right, #2ecc71, #27ae60); transition: width 0.3s; }
         #score-display { font-size: 20px; font-weight: bold; color: #f1c40f; text-shadow: 2px 2px 4px #000; }
-        /* 手机控制台 */
         .mobile-controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: space-around; padding: 0 20px; box-sizing: border-box; }
         .btn { width: 75px; height: 75px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 30px; user-select: none; -webkit-tap-highlight-color: transparent; }
         .btn:active { background: rgba(255,255,255,0.4); transform: scale(0.9); }
@@ -24,7 +21,7 @@
     <div class="ui-layer">
         <div id="score-display">得分: <span id="scoreVal">0</span></div>
         <div style="display: flex; flex-direction: column; align-items: flex-end;">
-            <span style="font-size: 12px; margin-bottom: 2px;">HP</span>
+            <span style="font-size: 11px; margin-bottom: 2px;">SHIELD</span>
             <div class="health-container"><div id="health-bar"></div></div>
         </div>
     </div>
@@ -43,19 +40,23 @@
         const healthBar = document.getElementById('health-bar');
         const scoreVal = document.getElementById('scoreVal');
 
-        // --- 1. 资源加载 (图片 & 音效) ---
+        // --- 1. 资源预加载优化 ---
+        function loadAudio(url) {
+            const audio = new Audio(url);
+            audio.preload = 'auto';
+            audio.load();
+            return audio;
+        }
+
         const playerImg = new Image();
         playerImg.src = 'https://cdn-icons-png.flaticon.com/512/3211/3211514.png'; 
         const enemyImg = new Image();
         enemyImg.src = 'https://cdn-icons-png.flaticon.com/512/547/547434.png'; 
 
-        // 免费音效链接（激光与爆炸）
-        const shootSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3');
-        const boomSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
-        shootSound.volume = 0.4;
-        boomSound.volume = 0.6;
+        const shootSound = loadAudio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3');
+        const boomSound = loadAudio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
 
-        // --- 2. 游戏对象 ---
+        // --- 2. 游戏状态 ---
         let player = { x: 135, y: 380, w: 50, h: 50, health: 100, speed: 8 };
         let bullets = [];
         let enemies = [];
@@ -64,25 +65,24 @@
         let keys = {};
 
         // --- 3. 核心功能 ---
+        function playSound(audioNode, vol = 0.4) {
+            let clone = audioNode.cloneNode(); // 解决音效迟缓和连发重叠的核心
+            clone.volume = vol;
+            clone.play().catch(() => {});
+        }
+
         function shoot() {
             if (!gameActive) return;
-            bullets.push({ x: player.x + 22, y: player.y, w: 6, h: 18, speed: 10 });
-            
-            // 播放音效（重置时间以便快速连发）
-            shootSound.currentTime = 0;
-            shootSound.play().catch(()=>{}); 
+            bullets.push({ x: player.x + 22, y: player.y, w: 6, h: 18, speed: 12 });
+            playSound(shootSound, 0.3);
         }
 
         function checkCollisions() {
-            // 子弹击中敌人
             for (let b = bullets.length - 1; b >= 0; b--) {
                 for (let e = enemies.length - 1; e >= 0; e--) {
                     if (bullets[b].x < enemies[e].x + 40 && bullets[b].x + 6 > enemies[e].x &&
                         bullets[b].y < enemies[e].y + 40 && bullets[b].y + 18 > enemies[e].y) {
-                        
-                        boomSound.currentTime = 0;
-                        boomSound.play().catch(()=>{}); 
-                        
+                        playSound(boomSound, 0.5);
                         enemies.splice(e, 1);
                         bullets.splice(b, 1);
                         score += 10;
@@ -91,32 +91,26 @@
                     }
                 }
             }
-
-            // 敌人撞击玩家
             for (let e = enemies.length - 1; e >= 0; e--) {
                 if (player.x < enemies[e].x + 35 && player.x + 50 > enemies[e].x &&
                     player.y < enemies[e].y + 35 && player.y + 50 > enemies[e].y) {
                     enemies.splice(e, 1);
-                    player.health -= 25; 
+                    player.health -= 20; 
+                    playSound(boomSound, 0.8);
                     healthBar.style.width = Math.max(0, player.health) + "%";
-                    
-                    boomSound.currentTime = 0;
-                    boomSound.play().catch(()=>{}); 
-
                     if (player.health <= 0) {
                         gameActive = false;
-                        setTimeout(() => { alert("战机坠毁！最终得分: " + score); location.reload(); }, 100);
+                        setTimeout(() => { alert("游戏结束！得分: " + score); location.reload(); }, 100);
                     }
                 }
             }
         }
 
-        // --- 4. 游戏循环 ---
+        // --- 4. 循环逻辑 ---
         function update() {
             if (!gameActive) return;
             if (keys['ArrowLeft'] && player.x > 0) player.x -= player.speed;
             if (keys['ArrowRight'] && player.x < canvas.width - 50) player.x += player.speed;
-
             bullets.forEach((b, i) => { b.y -= b.speed; if(b.y < -20) bullets.splice(i,1); });
             enemies.forEach((e, i) => { e.y += 3.5; if(e.y > 500) enemies.splice(i,1); });
             checkCollisions();
@@ -124,19 +118,13 @@
 
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // 玩家
             ctx.drawImage(playerImg, player.x, player.y, player.w, player.h);
-
-            // 敌人
             enemies.forEach(e => ctx.drawImage(enemyImg, e.x, e.y, 40, 40));
-
-            // 子弹（带发光特效）
             ctx.fillStyle = "#00ffff";
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = 15;
             ctx.shadowColor = "#00ffff";
             bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
-            ctx.shadowBlur = 0; // 重置阴影，避免影响其他绘制
+            ctx.shadowBlur = 0;
         }
 
         function loop() {
@@ -145,24 +133,20 @@
             if (gameActive) requestAnimationFrame(loop);
         }
 
-        // --- 5. 交互监听 ---
+        // --- 5. 交互控制 ---
         document.addEventListener('keydown', (e) => { keys[e.code] = true; if(e.code==='Space') shoot(); });
         document.addEventListener('keyup', (e) => keys[e.code] = false);
 
-        // 手机控制逻辑优化
-        const setupMobileBtn = (id, key) => {
+        const setupMobile = (id, key) => {
             const btn = document.getElementById(id);
             btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; });
             btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[key] = false; });
         };
-        setupMobileBtn('leftBtn', 'ArrowLeft');
-        setupMobileBtn('rightBtn', 'ArrowRight');
+        setupMobile('leftBtn', 'ArrowLeft');
+        setupMobile('rightBtn', 'ArrowRight');
         document.getElementById('shootBtn').onclick = (e) => { e.preventDefault(); shoot(); };
 
-        // 敌人生成速度（每1秒一个）
         setInterval(() => { if(gameActive) enemies.push({x: Math.random()*280, y: -50}); }, 1000);
-        
-        // 启动游戏
         loop();
     </script>
 </body>
