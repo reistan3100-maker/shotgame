@@ -37,7 +37,13 @@
         // --- 1. 加载资源 (图片) ---
         const playerImg = new Image();
         playerImg.src = 'https://cdn-icons-png.flaticon.com/512/3211/3211514.png'; // 飞船图标
-        const enemyImg = new Image();
+        // 定义发射音效
+const shootSound = new Audio('https://view.moe/api/random/se/laser.mp3'); 
+// 定义爆炸音效
+const boomSound = new Audio('https://view.moe/api/random/se/explosion.mp3');
+// 定义背景音乐（可选）
+const bgMusic = new Audio('https://view.moe/api/random/se/bgm.mp3');
+bgMusic.loop = true; // 设置循环播放
         enemyImg.src = 'https://cdn-icons-png.flaticon.com/512/547/547434.png'; // 敌人图标
 
         let player = { x: 135, y: 380, w: 50, h: 50, health: 100, speed: 7 };
@@ -49,27 +55,24 @@
 
         // --- 2. 核心逻辑：发射子弹 ---
         function shoot() {
-            if (!gameActive) return;
-            bullets.push({ x: player.x + 22, y: player.y, w: 6, h: 15, speed: 8 });
-            // 如果想加音效，取消下面注释并放入MP3地址：
-            // new Audio('shoot.mp3').play();
-        }
+    if (!gameActive) return;
+    bullets.push({ x: player.x + 22, y: player.y, w: 6, h: 15, speed: 8 });
+    
+    // 播放发射声音
+    shootSound.currentTime = 0; // 强制重置进度，这样连发时声音不会卡住
+    shootSound.play();
+}
 
         // --- 3. 碰撞检测与伤害 ---
         function checkCollisions() {
-            // 子弹打中敌人
-            for (let b = bullets.length - 1; b >= 0; b--) {
-                for (let e = enemies.length - 1; e >= 0; e--) {
-                    if (bullets[b].x < enemies[e].x + 40 && bullets[b].x + 6 > enemies[e].x &&
-                        bullets[b].y < enemies[e].y + 40 && bullets[b].y + 15 > enemies[e].y) {
-                        enemies.splice(e, 1);
-                        bullets.splice(b, 1);
-                        score += 10;
-                        scoreVal.innerText = score;
-                        break;
-                    }
-                }
-            }
+           if (bullets[b].x < enemies[e].x + 40 && ...) {
+    // 播放爆炸声音
+    boomSound.currentTime = 0;
+    boomSound.play();
+    
+    enemies.splice(e, 1);
+    // ... 其他逻辑
+}
 
             // 敌人撞到玩家
             for (let e = enemies.length - 1; e >= 0; e--) {
@@ -135,4 +138,5 @@
         gameLoop();
     </script>
 </body>
+
 </html>
