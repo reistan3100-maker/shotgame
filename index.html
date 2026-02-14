@@ -3,27 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>太空射击 2.0 终极流畅版</title>
+    <title>太空射击 2.0 - 零延迟射击版</title>
     <style>
         body { margin: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; color: white; font-family: 'Arial', sans-serif; }
-        canvas { background: url('https://img.zcool.cn/community/01569d5812ba66a84a0d304f58f50c.jpg@1280w_1l_2o_100sh.jpg'); background-size: cover; border: 2px solid #555; box-shadow: 0 0 20px rgba(0,255,255,0.4); }
+        canvas { background: url('https://img.zcool.cn/community/01569d5812ba66a84a0d304f58f50c.jpg@1280w_1l_2o_100sh.jpg'); background-size: cover; border: 2px solid #555; }
         .ui-layer { position: absolute; top: 10px; width: 300px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
         .health-container { width: 100px; height: 12px; border: 1.5px solid #fff; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; }
-        #health-bar { width: 100%; height: 100%; background: linear-gradient(to right, #2ecc71, #27ae60); transition: width 0.3s; }
-        #score-display { font-size: 20px; font-weight: bold; color: #f1c40f; text-shadow: 2px 2px 4px #000; }
-        .mobile-controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: space-around; padding: 0 20px; box-sizing: border-box; }
-        .btn { width: 75px; height: 75px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 30px; user-select: none; -webkit-tap-highlight-color: transparent; }
-        .btn:active { background: rgba(255,255,255,0.4); transform: scale(0.9); }
-        .shoot-btn { background: rgba(231, 76, 60, 0.4); border-color: #e74c3c; width: 85px; height: 85px; }
+        #health-bar { width: 100%; height: 100%; background: #2ecc71; transition: width 0.3s; }
+        #score-display { font-size: 20px; font-weight: bold; color: #f1c40f; }
+        .mobile-controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: space-around; }
+        .btn { width: 75px; height: 75px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 30px; user-select: none; touch-action: none; }
+        .shoot-btn { background: rgba(231, 76, 60, 0.5); border-color: #e74c3c; width: 85px; height: 85px; }
     </style>
 </head>
 <body>
     <div class="ui-layer">
         <div id="score-display">得分: <span id="scoreVal">0</span></div>
-        <div style="display: flex; flex-direction: column; align-items: flex-end;">
-            <span style="font-size: 11px; margin-bottom: 2px;">SHIELD</span>
-            <div class="health-container"><div id="health-bar"></div></div>
-        </div>
+        <div class="health-container"><div id="health-bar"></div></div>
     </div>
     
     <canvas id="gameCanvas" width="320" height="480"></canvas>
@@ -40,23 +36,40 @@
         const healthBar = document.getElementById('health-bar');
         const scoreVal = document.getElementById('scoreVal');
 
-        // --- 1. 资源预加载优化 ---
-        function loadAudio(url) {
-            const audio = new Audio(url);
-            audio.preload = 'auto';
-            audio.load();
-            return audio;
+        // --- 1. 使用 AudioContext 解决延迟 (Web Audio API) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let shootBuffer = null;
+        let boomBuffer = null;
+
+        // 预加载并解码音频
+        async function loadSound(url) {
+            const response = await fetch(url);
+            const arrayBuffer = await response.arrayBuffer();
+            return await audioCtx.decodeAudioData(arrayBuffer);
         }
 
+        // 加载音效
+        loadSound('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3').then(buf => shootBuffer = buf);
+        loadSound('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3').then(buf => boomBuffer = buf);
+
+        function playSound(buffer) {
+            if (!buffer || !audioCtx) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            const gainNode = audioCtx.createGain();
+            gainNode.gain.value = 0.3; // 音量
+            source.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            source.start(0);
+        }
+
+        // --- 2. 游戏资源与状态 ---
         const playerImg = new Image();
         playerImg.src = 'https://cdn-icons-png.flaticon.com/512/3211/3211514.png'; 
         const enemyImg = new Image();
         enemyImg.src = 'https://cdn-icons-png.flaticon.com/512/547/547434.png'; 
 
-        const shootSound = loadAudio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3');
-        const boomSound = loadAudio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
-
-        // --- 2. 游戏状态 ---
         let player = { x: 135, y: 380, w: 50, h: 50, health: 100, speed: 8 };
         let bullets = [];
         let enemies = [];
@@ -64,17 +77,10 @@
         let gameActive = true;
         let keys = {};
 
-        // --- 3. 核心功能 ---
-        function playSound(audioNode, vol = 0.4) {
-            let clone = audioNode.cloneNode(); // 解决音效迟缓和连发重叠的核心
-            clone.volume = vol;
-            clone.play().catch(() => {});
-        }
-
         function shoot() {
             if (!gameActive) return;
             bullets.push({ x: player.x + 22, y: player.y, w: 6, h: 18, speed: 12 });
-            playSound(shootSound, 0.3);
+            playSound(shootBuffer); // 零延迟播放
         }
 
         function checkCollisions() {
@@ -82,7 +88,7 @@
                 for (let e = enemies.length - 1; e >= 0; e--) {
                     if (bullets[b].x < enemies[e].x + 40 && bullets[b].x + 6 > enemies[e].x &&
                         bullets[b].y < enemies[e].y + 40 && bullets[b].y + 18 > enemies[e].y) {
-                        playSound(boomSound, 0.5);
+                        playSound(boomBuffer);
                         enemies.splice(e, 1);
                         bullets.splice(b, 1);
                         score += 10;
@@ -96,7 +102,7 @@
                     player.y < enemies[e].y + 35 && player.y + 50 > enemies[e].y) {
                     enemies.splice(e, 1);
                     player.health -= 20; 
-                    playSound(boomSound, 0.8);
+                    playSound(boomBuffer);
                     healthBar.style.width = Math.max(0, player.health) + "%";
                     if (player.health <= 0) {
                         gameActive = false;
@@ -106,7 +112,6 @@
             }
         }
 
-        // --- 4. 循环逻辑 ---
         function update() {
             if (!gameActive) return;
             if (keys['ArrowLeft'] && player.x > 0) player.x -= player.speed;
@@ -121,10 +126,7 @@
             ctx.drawImage(playerImg, player.x, player.y, player.w, player.h);
             enemies.forEach(e => ctx.drawImage(enemyImg, e.x, e.y, 40, 40));
             ctx.fillStyle = "#00ffff";
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = "#00ffff";
             bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
-            ctx.shadowBlur = 0;
         }
 
         function loop() {
@@ -133,9 +135,16 @@
             if (gameActive) requestAnimationFrame(loop);
         }
 
-        // --- 5. 交互控制 ---
-        document.addEventListener('keydown', (e) => { keys[e.code] = true; if(e.code==='Space') shoot(); });
-        document.addEventListener('keyup', (e) => keys[e.code] = false);
+        // --- 3. 极速响应控制 (使用 touchstart 代替 click) ---
+        const shootBtn = document.getElementById('shootBtn');
+        shootBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            shoot();
+        });
+        shootBtn.addEventListener('mousedown', (e) => {
+            if ('ontouchstart' in window) return; // 防止手机端触发两次
+            shoot();
+        });
 
         const setupMobile = (id, key) => {
             const btn = document.getElementById(id);
@@ -144,7 +153,9 @@
         };
         setupMobile('leftBtn', 'ArrowLeft');
         setupMobile('rightBtn', 'ArrowRight');
-        document.getElementById('shootBtn').onclick = (e) => { e.preventDefault(); shoot(); };
+
+        document.addEventListener('keydown', (e) => { keys[e.code] = true; if(e.code==='Space') shoot(); });
+        document.addEventListener('keyup', (e) => keys[e.code] = false);
 
         setInterval(() => { if(gameActive) enemies.push({x: Math.random()*280, y: -50}); }, 1000);
         loop();
